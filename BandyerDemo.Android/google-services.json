@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "32",
+    "firebase_url": "https://bandyer-android-sdk-push-test.firebaseio.com",
+    "project_id": "bandyer-android-sdk-push-test",
+    "storage_bucket": "bandyer-android-sdk-push-test.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:32:android:c23",
+        "android_client_info": {
+          "package_name": "com.bandyer.xamarin.demo_android_sdk"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "Aiza"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

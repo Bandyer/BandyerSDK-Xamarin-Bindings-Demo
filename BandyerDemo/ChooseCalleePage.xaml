@@ -1,0 +1,62 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<ContentPage
+    xmlns="http://xamarin.com/schemas/2014/forms"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    x:Class="BandyerDemo.ChooseCalleePage"
+    Title="Choose callee"
+    >
+    <ContentPage.Content>
+        <AbsoluteLayout>
+            <StackLayout
+                AbsoluteLayout.LayoutBounds="0,0,1,1"
+                AbsoluteLayout.LayoutFlags="All"
+                Orientation="Vertical">
+                <Label x:Name="mainLabel" Margin="10"></Label>
+                <ListView
+                    x:Name="userList"
+                    SeparatorColor="#CCCCCC"
+                    ItemTapped="ListView_ItemTapped"
+                    >
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <ViewCell>
+                                <StackLayout
+                                    Spacing="0"
+                                    Orientation="Horizontal">
+                                    <CheckBox Margin="10,10,0,10" x:Name="checkBox" IsChecked="{Binding Selected}"></CheckBox>
+                                    <Label Margin="10" HorizontalOptions="StartAndExpand" VerticalOptions="CenterAndExpand" Text="{Binding Alias}" />
+                                </StackLayout>
+                            </ViewCell>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </StackLayout>
+            <StackLayout
+                AbsoluteLayout.LayoutBounds="0,1,1,100"
+                AbsoluteLayout.LayoutFlags="PositionProportional,WidthProportional"
+                Orientation="Horizontal"
+                HorizontalOptions="End"
+                Spacing="0"
+                >
+                <Button
+                    x:Name="ButtonStartChat"
+                    Clicked="Button_StartChat"
+                    CornerRadius="30"
+                    ImageSource="chat.png"
+                    BackgroundColor="#00ff00"
+                    Margin="0,20,20,20"
+                    HeightRequest="60"
+                    WidthRequest="60"></Button>
+                <Button
+                    x:Name="ButtonStartCall"
+                    Clicked="Button_StartCall"
+                    CornerRadius="30"
+                    ImageSource="answer.png"
+                    BackgroundColor="#00ff00"
+                    Margin="0,20,20,20"
+                    HeightRequest="60"
+                    WidthRequest="60"></Button>
+            </StackLayout>
+        </AbsoluteLayout>
+    </ContentPage.Content>
+</ContentPage>

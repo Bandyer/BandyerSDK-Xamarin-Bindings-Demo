@@ -1,0 +1,65 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<pages:PopupPage
+    xmlns="http://xamarin.com/schemas/2014/forms"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:pages="clr-namespace:Rg.Plugins.Popup.Pages;assembly=Rg.Plugins.Popup"
+    x:Class="BandyerDemo.ChatConfigPopupPage">
+    <ScrollView
+        Margin="20"
+        Padding="10"
+        BackgroundColor="{OnAppTheme Light=White, Dark=Black}"
+        HorizontalOptions="Center"
+        VerticalOptions="Center">
+        <StackLayout Orientation="Vertical">
+            <Label FontSize="20" Text="Chat"></Label>
+            <Label Text="Select call types that can be started from chat UI:"></Label>
+            <StackLayout Orientation="Horizontal">
+                <CheckBox VerticalOptions="Center" x:Name="checkboxChatAudioOnly" IsChecked="True"></CheckBox>
+                <Label VerticalOptions="Center" Text="Audio only"></Label>
+            </StackLayout>
+            <StackLayout Orientation="Horizontal">
+                <CheckBox VerticalOptions="Center" x:Name="checkboxChatAudioUpgradable" IsChecked="True"></CheckBox>
+                <Label VerticalOptions="Center" Text="Audio upgradable"></Label>
+            </StackLayout>
+            <StackLayout Orientation="Horizontal">
+                <CheckBox VerticalOptions="Center" x:Name="checkboxChatAudioVideo" IsChecked="True"></CheckBox>
+                <Label VerticalOptions="Center" Text="Audio video"></Label>
+            </StackLayout>
+            <Label x:Name="labelIos" IsVisible="False" Text="In-call options and capabilities cannot be disabled on iOS"></Label>
+            <Label Text="Select in-call capabilities:"></Label>
+            <StackLayout Orientation="Horizontal">
+                <CheckBox VerticalOptions="Center" x:Name="checkboxWhiteboard" IsChecked="True"></CheckBox>
+                <Label VerticalOptions="Center" Text="Whiteboard (Requires API 19)"></Label>
+            </StackLayout>
+            <StackLayout Orientation="Horizontal">
+                <CheckBox VerticalOptions="Center" x:Name="checkboxFilesharing" IsChecked="True"></CheckBox>
+                <Label VerticalOptions="Center" Text="File sharing"></Label>
+            </StackLayout>
+            <StackLayout Orientation="Horizontal">
+                <CheckBox VerticalOptions="Center" x:Name="checkboxChat" IsChecked="True"></CheckBox>
+                <Label VerticalOptions="Center" Text="Chat (Requires API 19)"></Label>
+            </StackLayout>
+            <StackLayout Orientation="Horizontal">
+                <CheckBox VerticalOptions="Center" x:Name="checkboxScreensharing" IsChecked="True"></CheckBox>
+                <Label VerticalOptions="Center" Text="Screen sharing (Requires API 21)"></Label>
+            </StackLayout>
+            <Label Text="Select in-call options:"></Label>
+            <StackLayout Orientation="Horizontal">
+                <CheckBox VerticalOptions="Center" x:Name="checkboxCallRecording" IsChecked="False"></CheckBox>
+                <Label VerticalOptions="Center" Text="Call recording"></Label>
+            </StackLayout>
+            <StackLayout x:Name="layoutBackCamera" Orientation="Horizontal">
+                <CheckBox VerticalOptions="Center" x:Name="checkboxBackCamera" IsChecked="False"></CheckBox>
+                <Label VerticalOptions="Center" Text="Back camera as default (if available)"></Label>
+            </StackLayout>
+            <StackLayout x:Name="layoutDisableProximitySensor" Orientation="Horizontal">
+                <CheckBox VerticalOptions="Center" x:Name="checkboxDisableProximitySensor" IsChecked="False"></CheckBox>
+                <Label VerticalOptions="Center" Text="Disable proximity sensor"></Label>
+            </StackLayout>
+            <StackLayout Orientation="Horizontal">
+                <Button Clicked="Button_Cancel" HorizontalOptions="FillAndExpand" Text="CANCEL"></Button>
+                <Button Clicked="Button_Action" HorizontalOptions="FillAndExpand" Text="CHAT"></Button>
+            </StackLayout>
+        </StackLayout>
+    </ScrollView>
+</pages:PopupPage>
