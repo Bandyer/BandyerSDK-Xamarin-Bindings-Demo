@@ -76,6 +76,9 @@
     <PackageReference Include="Bandyer.SDK.Android">
       <Version>1.5.5</Version>
     </PackageReference>
+    <PackageReference Include="Bandyer.CommunicationCenter.Android">
+      <Version>1.2.10</Version>
+    </PackageReference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="MainActivity.cs" />
@@ -88,6 +91,7 @@
     <Compile Include="BandyerSdkAndroid.cs" />
     <Compile Include="BandyerDemoFirebaseMessagingService.cs" />
     <Compile Include="SplashActivity.cs" />
+    <Compile Include="EmptyInterface.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Resources\AboutResources.txt" />

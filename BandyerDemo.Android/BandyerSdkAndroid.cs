@@ -18,8 +18,12 @@ using Com.Bandyer.Android_sdk.Intent.Call;
 using Com.Bandyer.Android_sdk.Intent.Chat;
 using Com.Bandyer.Android_sdk.Module;
 using Com.Bandyer.Android_sdk.Utils.Provider;
+using Com.Bandyer.Communication_center.Call;
+using Com.Bandyer.Communication_center.Call_client;
+using Com.Bandyer.Core_av.Room;
 using Java.Lang;
 using Xamarin.Forms;
+
 
 [assembly: Dependency(typeof(BandyerSdkAndroid))]
 namespace BandyerDemo.Droid
@@ -32,6 +36,7 @@ namespace BandyerDemo.Droid
         , ICallObserver
         , IChatUIObserver
         , IChatObserver
+        , ICommEvent
     {
         const string TAG = "BandyerDemo";
         public static Android.App.Application Application;
@@ -198,7 +203,7 @@ namespace BandyerDemo.Droid
                 capabilities.WithScreenSharing();
             }
 
-            CallOptions options = new CallOptions();
+            Com.Bandyer.Android_sdk.Intent.Call.CallOptions options = new Com.Bandyer.Android_sdk.Intent.Call.CallOptions();
             if (inCallOptions.Contains(BandyerSdkForms.InCallOptions.CallRecording))
             {
                 options.WithRecordingEnabled(); // if the call started should be recorded
@@ -246,7 +251,7 @@ namespace BandyerDemo.Droid
             capabilities.WithChat();
             capabilities.WithScreenSharing();
 
-            CallOptions options = new CallOptions();
+            Com.Bandyer.Android_sdk.Intent.Call.CallOptions options = new Com.Bandyer.Android_sdk.Intent.Call.CallOptions();
             //options.WithRecordingEnabled(); // if the call started should be recorded
             //options.WithBackCameraAsDefault(); // if the call should start with back camera
             //options.WithProximitySensorDisabled(); // if the proximity sensor should be disabled during calls
@@ -280,7 +285,7 @@ namespace BandyerDemo.Droid
                 capabilities.WithScreenSharing();
             }
 
-            CallOptions options = new CallOptions();
+            Com.Bandyer.Android_sdk.Intent.Call.CallOptions options = new Com.Bandyer.Android_sdk.Intent.Call.CallOptions();
             if (inCallOptions.Contains(BandyerSdkForms.InCallOptions.CallRecording))
             {
                 options.WithRecordingEnabled(); // if the call started should be recorded
@@ -336,14 +341,14 @@ namespace BandyerDemo.Droid
         #endregion
 
         #region ICallUIObserver
-        public void OnActivityDestroyed(ICall call, Java.Lang.Ref.WeakReference activity)
+        public void OnActivityDestroyed(Com.Bandyer.Android_sdk.Intent.Call.ICall call, Java.Lang.Ref.WeakReference activity)
         {
             Log.Debug(TAG, "onCallActivityDestroyed: "
                + call.CallInfo.Caller + ", "
                + System.String.Join(", ", call.CallInfo.Callees));
         }
 
-        public void OnActivityError(ICall call, Java.Lang.Ref.WeakReference activity, CallException error)
+        public void OnActivityError(Com.Bandyer.Android_sdk.Intent.Call.ICall call, Java.Lang.Ref.WeakReference activity, Com.Bandyer.Android_sdk.Call.CallException error)
         {
             Log.Debug(TAG, "onCallActivityDestroyed: "
               + call.CallInfo.Caller + ", "
@@ -352,7 +357,7 @@ namespace BandyerDemo.Droid
               + "exception: " + error.Message);
         }
 
-        public void OnActivityStarted(ICall call, Java.Lang.Ref.WeakReference activity)
+        public void OnActivityStarted(Com.Bandyer.Android_sdk.Intent.Call.ICall call, Java.Lang.Ref.WeakReference activity)
         {
             Log.Debug(TAG, "onCallActivityStarted: "
                + call.CallInfo.Caller + ", "
@@ -361,21 +366,23 @@ namespace BandyerDemo.Droid
         #endregion
 
         #region ICallObserver
-        public void OnCallCreated(ICall call)
+        public void OnCallCreated(Com.Bandyer.Android_sdk.Intent.Call.ICall call)
         {
             Log.Debug(TAG, "onCallCreated: "
                + call.CallInfo.Caller + ", "
                + System.String.Join(", ", call.CallInfo.Callees));
+            CallClient.Instance.OngoingCall.AddEventObserver(this);
+            CallClient.Instance.OngoingCall.HangUp(CallEndReason.Hangup);
         }
 
-        public void OnCallEnded(ICall call)
+        public void OnCallEnded(Com.Bandyer.Android_sdk.Intent.Call.ICall call)
         {
             Log.Debug(TAG, "onCallEnded: "
                + call.CallInfo.Caller + ", "
                + System.String.Join(", ", call.CallInfo.Callees));
         }
 
-        public void OnCallEndedWithError(ICall call, CallException callException)
+        public void OnCallEndedWithError(Com.Bandyer.Android_sdk.Intent.Call.ICall call, Com.Bandyer.Android_sdk.Call.CallException callException)
         {
             Log.Debug(TAG, "onCallEndedWithError: "
               + call.CallInfo.Caller + ", "
@@ -384,7 +391,7 @@ namespace BandyerDemo.Droid
               + "exception: " + callException.Message);
         }
 
-        public void OnCallStarted(ICall call)
+        public void OnCallStarted(Com.Bandyer.Android_sdk.Intent.Call.ICall call)
         {
             Log.Debug(TAG, "onCallStarted: "
                + call.CallInfo.Caller + ", "
@@ -424,6 +431,31 @@ namespace BandyerDemo.Droid
         {
             Log.Debug(TAG, "OnChatStarted");
         }
+
+        public void OnCallEnded(Com.Bandyer.Communication_center.Call.ICall call, CallEndReason callEndReason)
+        {
+            Log.Error(TAG, "OnCallEnded" + callEndReason.Name());
+        }
+
+        public void OnCallError(Com.Bandyer.Communication_center.Call.ICall call, Com.Bandyer.Communication_center.Call.CallException reason)
+        {
+            Log.Error(TAG, "OnCallError " + reason.Message);
+        }
+
+        public void OnCallStarted(Com.Bandyer.Communication_center.Call.ICall call, RoomToken roomToken)
+        {
+            Log.Debug(TAG, "OnCallStarted");
+        }
+
+        public void OnCallStatusChanged(Com.Bandyer.Communication_center.Call.ICall call, CallStatus status)
+        {
+            Log.Debug(TAG, "OnCallStatusChanged");
+        }
+
+        public void OnCallUpgraded()
+        {
+            Log.Debug(TAG, "OnCallUpgraded");
+        }
         #endregion
 
         class BandyerSdkCallNotificationListener : Java.Lang.Object
@@ -434,7 +466,7 @@ namespace BandyerDemo.Droid
                 notificationStyle.SetNotificationColor(Android.Graphics.Color.Red);
             }
 
-            public void OnIncomingCall(IIncomingCall call, bool isDnd, bool isScreenLocked)
+            public void OnIncomingCall(Com.Bandyer.Android_sdk.Intent.Call.IIncomingCall call, bool isDnd, bool isScreenLocked)
             {
                 call.WithCapabilities(GetDefaultCallCapabilities());
                 call.WithOptions(GetDefaultIncomingCallOptions());
