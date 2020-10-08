@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Net;
-using System.Text;
 using Bandyer;
 using BandyerDemo.iOS;
 using CallKit;
@@ -26,8 +24,9 @@ namespace BandyerDemo.iOS
         , IBCHChatClientObserver
         , IBCHChannelViewControllerDelegate
         , IPKPushRegistryDelegate
-        , IBCHMessageNotificationControllerDelegate
         , IBDKCallBannerControllerDelegate
+        , IBDKInAppChatNotificationTouchListener
+        , IBDKInAppFileShareNotificationTouchListener
     {
         private static BandyerSdkiOS instance = null;
         public BandyerSdkiOS()
@@ -35,15 +34,41 @@ namespace BandyerDemo.iOS
             instance = this;
         }
 
-        private BDKCallWindow callWindow = null;
-        private IBDKIntent callIntent = null;
-        private string currentUserAlias;
-        private BCHMessageNotificationController messageNotificationController = null;
-        private BDKCallBannerController callBannerController = null;
-        private NSUrl webPageUrl;
-        private bool shouldStartWindowCallFromWebPageUrl = false;
-        private bool isSdkInitialized = false;
-        private List<BandyerSdkForms.User> usersDetails;
+        private BDKCallWindow _callWindow = null;
+
+        private BDKCallWindow CallWindow
+        {
+            get
+            {
+                if (_callWindow == null)
+                    SetupCallWindow();
+                
+                return _callWindow;
+            }
+
+            set => _callWindow = value;
+        }
+        
+        private void SetupCallWindow()
+        {
+            var config = new BDKCallViewControllerConfiguration();
+            var items = UserInfoFetcherItems();
+            var userInfoFetcher = new UserInfoFetcher(items);
+            config.UserInfoFetcher = userInfoFetcher;
+            config.FakeCapturerFileURL = NSBundle.MainBundle.GetUrlForResource("video", "mp4");
+            _callWindow = new BDKCallWindow();
+            _callWindow.CallDelegate = this;
+            _callWindow.SetConfiguration(config);
+        }
+
+        private IBDKIntent _callIntent = null;
+        private string _currentUserAlias;
+        private BDKCallBannerController _callBannerController = null;
+        private NSUrl _webPageUrl;
+        private bool _shouldStartWindowCallFromWebPageUrl = false;
+        private bool _isSdkInitialized = false;
+        private List<BandyerSdkForms.User> _usersDetails;
+        private BCXCallRegistryObserver _registryObserver = new RegistryObserver();
 
         public static void InitSdk()
         {
@@ -55,43 +80,43 @@ namespace BandyerDemo.iOS
             return instance.ContinueUserActivityInt(userActivity);
         }
 
-        void InitSdkInt()
+        private void InitSdkInt()
         {
-            if (!isSdkInitialized)
-            {
-                isSdkInitialized = true;
-                var config = new BDKConfig();
-                config.NotificationPayloadKeyPath = "data";
-                config.PushRegistryDelegate = this;
+            if (_isSdkInitialized)
+                return;
+            
+            _isSdkInitialized = true;
+            var config = new BDKConfig();
+            config.NotificationPayloadKeyPath = "data";
+            config.PushRegistryDelegate = this;
 
-                config.Environment = BDKEnvironment.Sandbox;
+            config.Environment = BDKEnvironment.Sandbox;
+            BDKConfig.LogLevel = BDFDDLogLevel.Verbose;
 
-                // CALLKIT, enabled on real device and disabled on simulator because it's not supported yet by it.
-                config.CallKitEnabled = Runtime.Arch != Arch.SIMULATOR;
-                config.NativeUILocalizedName = "BanyerDemo App";
-                //config.NativeUIRingToneSound = "MyRingtoneSound";
-                UIImage callKitIconImage = UIImage.FromBundle("bandyer_logo");
-                config.NativeUITemplateIconImageData = callKitIconImage.AsPNG();
-                config.SupportedHandleTypes = new NSSet(new object[] { CXHandleType.EmailAddress, CXHandleType.Generic });
-                config.HandleProvider = new BandyerSdkBCXHandleProvider();
-                // CALLKIT
+            // CALLKIT, enabled on real device and disabled on simulator because it's not supported yet by it.
+            config.CallKitEnabled = Runtime.Arch != Arch.SIMULATOR;
+            config.NativeUILocalizedName = "BanyerDemo App";
+            //config.NativeUIRingToneSound = "MyRingtoneSound";
+            UIImage callKitIconImage = UIImage.FromBundle("bandyer_logo");
+            config.NativeUITemplateIconImageData = callKitIconImage.AsPNG();
+            config.SupportedHandleTypes = new NSSet<NSNumber>(new NSNumber[] { new NSNumber((long)CXHandleType.EmailAddress), new NSNumber((long)CXHandleType.Generic)});
+            config.HandleProvider = new HandleProvider();
 
-                BandyerSDK.Instance().InitializeWithApplicationId(BandyerSdkForms.AppId, config);
-            }
+            BandyerSDK.Instance().InitializeWithApplicationId(BandyerSdkForms.AppId, config);
         }
 
-        bool ContinueUserActivityInt(NSUserActivity userActivity)
+        private bool ContinueUserActivityInt(NSUserActivity userActivity)
         {
             if (userActivity.ActivityType == NSUserActivityType.BrowsingWeb)
             {
-                this.webPageUrl = userActivity.WebPageUrl;
+                this._webPageUrl = userActivity.WebPageUrl;
                 if (BandyerSDK.Instance().CallClient.IsRunning)
                 {
-                    startWindowCallFromWebPageUrl(webPageUrl);
+                    StartWindowCallFromWebPageUrl(_webPageUrl);
                 }
                 else
                 {
-                    shouldStartWindowCallFromWebPageUrl = true;
+                    _shouldStartWindowCallFromWebPageUrl = true;
                 }
                 return true;
             }
@@ -103,19 +128,18 @@ namespace BandyerDemo.iOS
             return false;
         }
 
-        void startWindowCallFromWebPageUrl(NSUrl url)
+        private void StartWindowCallFromWebPageUrl(NSUrl url)
         {
-            shouldStartWindowCallFromWebPageUrl = false;
+            _shouldStartWindowCallFromWebPageUrl = false;
+            
             var intent = BDKJoinURLIntent.IntentWithURL(url);
-            initCallWindow();
-            callWindow.ShouldPresentCallViewControllerWithIntent(intent, (success) =>
+            CallWindow.PresentCallViewControllerWithCompletion(intent, (error) =>
             {
-                if (!success)
-                {
-                    var alert = UIAlertController.Create("Warning", "Another call is already in progress.", UIAlertControllerStyle.Alert);
-                    alert.AddAction(UIAlertAction.Create("OK", UIAlertActionStyle.Default, null));
-                    UIApplication.SharedApplication.KeyWindow.RootViewController.PresentViewController(alert, true, null);
-                }
+                if (error == null) return;
+                
+                var alert = UIAlertController.Create("Warning", "Another call is already in progress.", UIAlertControllerStyle.Alert);
+                alert.AddAction(UIAlertAction.Create("OK", UIAlertActionStyle.Default, null));
+                UIApplication.SharedApplication.KeyWindow.RootViewController.PresentViewController(alert, true, null);
             });
         }
 
@@ -150,35 +174,37 @@ namespace BandyerDemo.iOS
         [Introduced(PlatformName.iOS, 10, 0, PlatformArchitecture.All, null)]
         private void HandleINStartVideoCallIntent(INStartVideoCallIntent intent)
         {
-            initCallWindow();
-            callWindow.HandleINStartVideoCallIntent(intent);
+            CallWindow.HandleINStartVideoCallIntent(intent);
         }
 
         [Introduced(PlatformName.iOS, 13, 0, PlatformArchitecture.All, null)]
         private void HandleINStartCallIntent(INStartCallIntent intent)
         {
-            initCallWindow();
-            callWindow.HandleINStartCallIntent((INStartCallIntent)intent);
+            CallWindow.HandleINStartCallIntent((INStartCallIntent)intent);
         }
 
         #region IBandyerSdk
+        
         public event Action<bool> CallStatus;
         public event Action<bool> ChatStatus;
 
         public void Init(string userAlias)
         {
-            this.currentUserAlias = userAlias;
+            this._currentUserAlias = userAlias;
 
             BandyerSDK.Instance().CallClient.AddObserver(this, DispatchQueue.MainQueue);
-            BandyerSDK.Instance().CallClient.Start(currentUserAlias);
+            BandyerSDK.Instance().CallClient.Start(_currentUserAlias);
 
             BandyerSDK.Instance().ChatClient.AddObserver(this, DispatchQueue.MainQueue);
-            BandyerSDK.Instance().ChatClient.Start(currentUserAlias);
+            BandyerSDK.Instance().ChatClient.Start(_currentUserAlias);
+
+            BandyerSDK.Instance().NotificationsCoordinator.ChatListener = this;
+            BandyerSDK.Instance().NotificationsCoordinator.FileShareListener = this;
         }
 
         public void SetUserDetails(List<BandyerSdkForms.User> usersDetails)
         {
-            this.usersDetails = usersDetails;
+            this._usersDetails = usersDetails;
         }
 
         public void StartCall(List<string> userAliases, List<BandyerSdkForms.CallCapability> callCapabilities, List<BandyerSdkForms.InCallCapability> inCallCapabilities, List<BandyerSdkForms.InCallOptions> inCallOptions)
@@ -186,57 +212,49 @@ namespace BandyerDemo.iOS
             var callee = userAliases.ToArray();
             if (callCapabilities.Contains(BandyerSdkForms.CallCapability.AudioVideo))
             {
-                callIntent = BDKMakeCallIntent.IntentWithCallee(callee, BDKCallType.AudioVideoCallType);
+                _callIntent = BDKMakeCallIntent.IntentWithCallee(callee, BDKCallType.AudioVideoCallType);
             }
             else if (callCapabilities.Contains(BandyerSdkForms.CallCapability.AudioUpgradable))
             {
-                callIntent = BDKMakeCallIntent.IntentWithCallee(callee, BDKCallType.AudioUpgradableCallType);
+                _callIntent = BDKMakeCallIntent.IntentWithCallee(callee, BDKCallType.AudioUpgradableCallType);
             }
             else if (callCapabilities.Contains(BandyerSdkForms.CallCapability.AudioOnly))
             {
-                callIntent = BDKMakeCallIntent.IntentWithCallee(callee, BDKCallType.AudioOnlyCallType);
+                _callIntent = BDKMakeCallIntent.IntentWithCallee(callee, BDKCallType.AudioOnlyCallType);
             }
             else
             {
-                callIntent = BDKMakeCallIntent.IntentWithCallee(callee, BDKCallType.AudioVideoCallType);
+                _callIntent = BDKMakeCallIntent.IntentWithCallee(callee, BDKCallType.AudioVideoCallType);
             }
-            startWindowCall(callIntent);
+            StartWindowCall(_callIntent);
         }
 
         public void StartChat(string userAlias, List<BandyerSdkForms.ChatWithCallCapability> callCapabilities, List<BandyerSdkForms.InCallCapability> inCallCapabilities, List<BandyerSdkForms.InCallOptions> inCallOptions)
         {
             var intent = BCHOpenChatIntent.OpenChatWith(userAlias);
-            startChatController(intent, callCapabilities);
+            StartChatController(intent, callCapabilities);
         }
 
         public void OnPageAppearing()
         {
-            if (messageNotificationController == null)
-            {
-                messageNotificationController = new BCHMessageNotificationController();
-                messageNotificationController.Delegate = this;
-                messageNotificationController.ParentViewController = UIApplication.SharedApplication.KeyWindow.RootViewController;
-            }
-            messageNotificationController.Show();
+            BandyerSDK.Instance().NotificationsCoordinator.Start();
 
-            if (callBannerController == null)
+            if (_callBannerController == null)
             {
-                callBannerController = new BDKCallBannerController();
-                callBannerController.Delegate = this;
-                callBannerController.ParentViewController = UIApplication.SharedApplication.KeyWindow.RootViewController;
+                _callBannerController = new BDKCallBannerController();
+                _callBannerController.Delegate = this;
+                _callBannerController.ParentViewController = UIApplication.SharedApplication.KeyWindow.RootViewController;
             }
-            callBannerController.Show();
+            _callBannerController.Show();
         }
 
         public void OnPageDisappearing()
         {
-            if (messageNotificationController != null)
+            BandyerSDK.Instance().NotificationsCoordinator.Stop();
+            
+            if (_callBannerController != null)
             {
-                messageNotificationController.Hide();
-            }
-            if (callBannerController != null)
-            {
-                callBannerController.Hide();
+                _callBannerController.Hide();
             }
         }
 
@@ -244,17 +262,17 @@ namespace BandyerDemo.iOS
         {
             BandyerSDK.Instance().CallClient.Stop();
             BandyerSDK.Instance().ChatClient.Stop();
-            messageNotificationController = null;
-            callBannerController = null;
-            isSdkInitialized = false;
+            _callBannerController = null;
+            _isSdkInitialized = false;
         }
+        
         #endregion
 
-        public class BandyerSdkBCXHandleProvider : NSObject, IBCXHandleProvider
+        private class HandleProvider : NSObject, IBCXHandleProvider
         {
-            public void Completion(string[] aliases, Action<CXHandle> completion)
+            public void HandleForAliases (string[] aliases, Action<CXHandle> completion)
             {
-                Debug.Print("IBCXHandleProvider Completion " + aliases + " " + completion);
+                Debug.Print("HandleForAliases " + aliases);
 
                 CXHandle handle;
                 if (aliases != null)
@@ -268,19 +286,19 @@ namespace BandyerDemo.iOS
 
                 completion(handle);
             }
-
+            
             [return: Release]
             public NSObject Copy(NSZone zone)
             {
-                return new BandyerSdkBCXHandleProvider();
+                return new HandleProvider();
             }
         }
 
-        public class BandyerSdkBDKUserInfoFetcher : NSObject, IBDKUserInfoFetcher
+        private class UserInfoFetcher : NSObject, IBDKUserInfoFetcher
         {
             public List<BDKUserInfoDisplayItem> Items { get; set; }
 
-            public BandyerSdkBDKUserInfoFetcher(List<BDKUserInfoDisplayItem> items)
+            public UserInfoFetcher(List<BDKUserInfoDisplayItem> items)
             {
                 this.Items = items;
             }
@@ -288,51 +306,35 @@ namespace BandyerDemo.iOS
             [return: Release]
             public NSObject Copy(NSZone zone)
             {
-                return new BandyerSdkBDKUserInfoFetcher(items: Items);
+                return new UserInfoFetcher(items: Items);
             }
 
             public void FetchUsersCompletion(string[] aliases, Action<NSArray<BDKUserInfoDisplayItem>> completion)
             {
                 Debug.Print("IBDKUserInfoFetcher FetchUsersCompletion " + aliases + " " + completion);
 
-                var _items = Items.Where(i => aliases.Contains(i.Alias)).ToList();
+                var items = Items.Where(i => aliases.Contains(i.Alias)).ToList();
 
-                var arr = NSArray<BDKUserInfoDisplayItem>.FromNSObjects(_items.ToArray());
+                var arr = NSArray<BDKUserInfoDisplayItem>.FromNSObjects(items.ToArray());
                 completion(arr);
             }
         }
 
-        void initCallWindow()
+        private void StartWindowCall(IBDKIntent intent)
         {
-            if (callWindow == null)
+            CallWindow.PresentCallViewControllerWithCompletion(intent, (error) =>
             {
-                callWindow = new BDKCallWindow();
-                callWindow.CallDelegate = this;
-                var config = new BDKCallViewControllerConfiguration();
-                var items = userInfoFetcherItems();
-                var userInfoFetcher = new BandyerSdkBDKUserInfoFetcher(items);
-                config.UserInfoFetcher = userInfoFetcher;
-                var url = NSBundle.MainBundle.GetUrlForResource("video", "mp4");
-                config.FakeCapturerFileURL = url;
-                callWindow.SetConfiguration(config);
-            }
-        }
-
-        void startWindowCall(IBDKIntent intent)
-        {
-            initCallWindow();
-            callWindow.ShouldPresentCallViewControllerWithIntent(intent, (success) =>
-            {
-                Debug.Print("ShouldPresentCallViewControllerWithIntent success " + success);
+                Debug.Print("PresentCallViewControllerWithCompletion error " + error);
             });
         }
 
-        void startChatController(BCHOpenChatIntent intent, List<BandyerSdkForms.ChatWithCallCapability> callCapabilities)
+        private void StartChatController(BCHOpenChatIntent intent, List<BandyerSdkForms.ChatWithCallCapability> callCapabilities)
         {
             var rootVC = UIApplication.SharedApplication.KeyWindow.RootViewController;
-            var items = userInfoFetcherItems();
-            var userInfoFetcher = new BandyerSdkBDKUserInfoFetcher(items);
+            var items = UserInfoFetcherItems();
+            var userInfoFetcher = new UserInfoFetcher(items);
             BCHChannelViewControllerConfiguration configuration;
+            
             if (callCapabilities.Contains(BandyerSdkForms.ChatWithCallCapability.AudioVideo))
             {
                 configuration = new BCHChannelViewControllerConfiguration(audioButton: true, videoButton: true, userInfoFetcher: userInfoFetcher);
@@ -349,6 +351,7 @@ namespace BandyerDemo.iOS
             {
                 configuration = new BCHChannelViewControllerConfiguration(audioButton: false, videoButton: false, userInfoFetcher: userInfoFetcher);
             }
+            
             var channelVC = new BCHChannelViewController();
             channelVC.Delegate = this;
             channelVC.Configuration = configuration;
@@ -356,10 +359,10 @@ namespace BandyerDemo.iOS
             rootVC.PresentViewController(channelVC, true, null);
         }
 
-        List<BDKUserInfoDisplayItem> userInfoFetcherItems()
+        private List<BDKUserInfoDisplayItem> UserInfoFetcherItems()
         {
             var items = new List<BDKUserInfoDisplayItem>();
-            foreach (var userDetail in usersDetails)
+            foreach (var userDetail in _usersDetails)
             {
                 var item = new BDKUserInfoDisplayItem(userDetail.Alias);
                 item.FirstName = userDetail.FirstName;
@@ -376,23 +379,18 @@ namespace BandyerDemo.iOS
             return items;
         }
 
-        void handleIncomingCall()
+        private void HandleIncomingCall()
         {
-            initCallWindow();
-            var config = new BDKCallViewControllerConfiguration();
-            var url = NSBundle.MainBundle.GetUrlForResource("video", "mp4");
-            config.FakeCapturerFileURL = url;
-            callWindow.SetConfiguration(config);
-            callIntent = new BDKIncomingCallHandlingIntent();
-            callWindow.ShouldPresentCallViewControllerWithIntent(callIntent, (success) =>
+            _callIntent = new BDKIncomingCallHandlingIntent();
+            CallWindow.PresentCallViewControllerWithCompletion(_callIntent, (error) =>
             {
-                Debug.Print("ShouldPresentCallViewControllerWithIntent success " + success);
-                if (!success)
-                {
-                    var alert = UIAlertController.Create("Warning", "Another call is already in progress.", UIAlertControllerStyle.Alert);
-                    alert.AddAction(UIAlertAction.Create("OK", UIAlertActionStyle.Default, null));
-                    UIApplication.SharedApplication.KeyWindow.RootViewController.PresentViewController(alert, true, null);
-                }
+                Debug.Print("PresentCallViewControllerWithCompletion error " + error);
+                
+                if (error == null) return;
+                
+                var alert = UIAlertController.Create("Warning", "Another call is already in progress.", UIAlertControllerStyle.Alert);
+                alert.AddAction(UIAlertAction.Create("OK", UIAlertActionStyle.Default, null));
+                UIApplication.SharedApplication.KeyWindow.RootViewController.PresentViewController(alert, true, null);
             });
         }
 
@@ -402,7 +400,7 @@ namespace BandyerDemo.iOS
         public void CallClientDidReceiveIncomingCall(IBCXCallClient client, IBCXCall call)
         {
             Debug.Print("CallClientDidReceiveIncomingCall " + client + " " + call);
-            handleIncomingCall();
+            HandleIncomingCall();
         }
 
         [Export("callClientDidPause:")]
@@ -419,9 +417,9 @@ namespace BandyerDemo.iOS
             if (client.IsRunning)
             {
                 CallStatus(true);
-                if (shouldStartWindowCallFromWebPageUrl)
+                if (_shouldStartWindowCallFromWebPageUrl)
                 {
-                    startWindowCallFromWebPageUrl(this.webPageUrl);
+                    StartWindowCallFromWebPageUrl(this._webPageUrl);
                 }
             }
             else
@@ -437,9 +435,9 @@ namespace BandyerDemo.iOS
             if (client.IsRunning)
             {
                 CallStatus(true);
-                if (shouldStartWindowCallFromWebPageUrl)
+                if (_shouldStartWindowCallFromWebPageUrl)
                 {
-                    startWindowCallFromWebPageUrl(this.webPageUrl);
+                    StartWindowCallFromWebPageUrl(this._webPageUrl);
                 }
             }
             else
@@ -460,6 +458,7 @@ namespace BandyerDemo.iOS
         {
             Debug.Print("CallClientDidStop " + client);
             CallStatus(false);
+            BandyerSDK.Instance().CallRegistry.RemoveObserver(_registryObserver);
         }
 
         [Export("callClientWillPause:")]
@@ -481,6 +480,7 @@ namespace BandyerDemo.iOS
         {
             Debug.Print("CallClientWillStart " + client);
             CallStatus(false);
+            BandyerSDK.Instance().CallRegistry.AddObserver(_registryObserver, DispatchQueue.MainQueue);
         }
 
         [Export("callClientWillStop:")]
@@ -499,7 +499,8 @@ namespace BandyerDemo.iOS
 
         #endregion
 
-        #region IBCHChatClientObserver
+        #region BCHChatClientObserver
+        
         [Export("chatClientWillStart:")]
         public void ChatClientWillStart(IBCHChatClient client)
         {
@@ -511,14 +512,7 @@ namespace BandyerDemo.iOS
         public void ChatClientDidStart(IBCHChatClient client)
         {
             Debug.Print("ChatClientDidStart " + client);
-            if (client.State == BCHChatClientState.Running)
-            {
-                ChatStatus(true);
-            }
-            else
-            {
-                ChatStatus(false);
-            }
+            ChatStatus(client.State == BCHChatClientState.Running);
         }
 
         [Export("chatClientWillPause:")]
@@ -560,14 +554,7 @@ namespace BandyerDemo.iOS
         public void ChatClientDidResume(IBCHChatClient client)
         {
             Debug.Print("ChatClientDidResume " + client);
-            if (client.State == BCHChatClientState.Running)
-            {
-                ChatStatus(true);
-            }
-            else
-            {
-                ChatStatus(false);
-            }
+            ChatStatus(client.State == BCHChatClientState.Running);
         }
 
         [Export("chatClient:didFailWithError:")]
@@ -576,71 +563,60 @@ namespace BandyerDemo.iOS
             Debug.Print("ChatClientDidFailWithError " + client + " " + error);
             ChatStatus(false);
         }
+        
         #endregion
 
         #region IBCHChannelViewControllerDelegate
+        
         public void ChannelViewControllerDidFinish(BCHChannelViewController controller)
         {
             Debug.Print("ChannelViewControllerDidFinish " + controller);
+            
             UIApplication.SharedApplication.KeyWindow.RootViewController.DismissViewController(true, null);
         }
         public void ChannelViewControllerDidTouchBanner(BCHChannelViewController controller, BDKCallBannerView banner)
         {
-
             Debug.Print("ChannelViewControllerDidTouchBanner " + controller + " " + banner);
-            if (callWindow != null)
-            {
-                callWindow.ShouldPresentCallViewControllerWithIntent(callIntent, (obj) => { });
-            }
+
+            CallWindow.PresentCallViewControllerWithCompletion(_callIntent, (error) => { });
         }
         public void ChannelViewControllerDidTapAudioCallWith(BCHChannelViewController controller, string[] users)
         {
             Debug.Print("ChannelViewControllerDidTapAudioCallWith " + controller + " " + users);
-            BDKMakeCallIntent intent;
-            if (users != null)
-            {
-                intent = BDKMakeCallIntent.IntentWithCallee(users, BDKCallType.AudioOnlyCallType);
-            }
-            else
-            {
-                intent = BDKMakeCallIntent.IntentWithCallee(new string[] { "unknown" }, BDKCallType.AudioOnlyCallType);
-            }
-            startWindowCall(intent);
+            var intent = BDKMakeCallIntent.IntentWithCallee(users ?? new string[] { "unknown" }, BDKCallType.AudioOnlyCallType);
+            StartWindowCall(intent);
         }
         public void ChannelViewControllerDidTapVideoCallWith(BCHChannelViewController controller, string[] users)
         {
             Debug.Print("ChannelViewControllerDidTapVideoCallWith " + controller + " " + users);
-            BDKMakeCallIntent intent;
-            if (users != null)
-            {
-                intent = BDKMakeCallIntent.IntentWithCallee(users, BDKCallType.AudioVideoCallType);
-            }
-            else
-            {
-                intent = BDKMakeCallIntent.IntentWithCallee(new string[] { "unknown" }, BDKCallType.AudioVideoCallType);
-            }
-            startWindowCall(intent);
+            var intent = BDKMakeCallIntent.IntentWithCallee(users ?? new string[] { "unknown" }, BDKCallType.AudioVideoCallType);
+            StartWindowCall(intent);
         }
+        
         #endregion
 
         #region IBDKCallWindowDelegate
+        
         public void CallWindowDidFinish(BDKCallWindow window)
         {
             Debug.Print("CallWindowDidFinish " + window);
             window.DismissCallViewControllerWithCompletion(() => { });
             window.Hidden = true;
         }
+        
         [Export("callWindow:openChatWith:")]
         public void CallWindowOpenChatWith(BDKCallWindow window, BCHOpenChatIntent intent)
         {
             Debug.Print("CallWindowOpenChatWith " + window + " " + intent);
             window.DismissCallViewControllerWithCompletion(() => { });
             window.Hidden = true;
-            startChatController(intent, new List<BandyerSdkForms.ChatWithCallCapability>() { BandyerSdkForms.ChatWithCallCapability.AudioVideo });
+            StartChatController(intent, new List<BandyerSdkForms.ChatWithCallCapability>() { BandyerSdkForms.ChatWithCallCapability.AudioVideo });
         }
+        
         #endregion
 
         #region IPKPushRegistryDelegate
+        
         public void DidUpdatePushCredentials(PKPushRegistry registry, PKPushCredentials credentials, string type)
         {
             Debug.Print("DidUpdatePushCredentials " + registry + " " + credentials + " " + type);
@@ -652,38 +628,119 @@ namespace BandyerDemo.iOS
         {
             Debug.Print("DidReceiveIncomingPush " + registry + " " + payload + " " + type);
         }
-        #endregion
-
-        #region IBCHMessageNotificationControllerDelegate
-        public void DidTouch(BCHMessageNotificationController controller, BCHChatNotification notification)
-        {
-            Debug.Print("IBCHMessageNotificationControllerDelegate DidTouch " + controller + " " + notification);
-            var intent = BCHOpenChatIntent.OpenChatFrom(notification);
-            startChatController(intent, new List<BandyerSdkForms.ChatWithCallCapability>() { BandyerSdkForms.ChatWithCallCapability.AudioVideo });
-        }
+        
         #endregion
 
         #region IBDKCallBannerControllerDelegate
+        
         public void DidTouch(BDKCallBannerController controller, BDKCallBannerView banner)
         {
             Debug.Print("IBDKCallBannerControllerDelegate DidTouch " + controller + " " + banner);
-            if (callWindow != null)
-            {
-                callWindow.ShouldPresentCallViewControllerWithIntent(callIntent, (obj) => { });
-            }
+            
+            CallWindow.PresentCallViewControllerWithCompletion(_callIntent, (error) => { });
         }
         [Export("callBannerController:willHide:")]
         public void WillHide(BDKCallBannerController controller, BDKCallBannerView banner)
         {
             Debug.Print("IBDKCallBannerControllerDelegate WillHide " + controller + " " + banner);
+            
             UIApplication.SharedApplication.StatusBarHidden = false;
         }
         [Export("callBannerController:willShow:")]
         public void WillShow(BDKCallBannerController controller, BDKCallBannerView banner)
         {
             Debug.Print("IBDKCallBannerControllerDelegate WillShow " + controller + " " + banner);
+            
             UIApplication.SharedApplication.StatusBarHidden = true;
         }
+        
+        #endregion
+        
+        #region Registry Observer
+
+        private class RegistryObserver : BCXCallRegistryObserver
+        {
+            private Dictionary<NSUuid, BCXCallObserver> _callObservers = new Dictionary<NSUuid, BCXCallObserver>();
+            public override void DidAddCall(IBCXCallRegistry registry, IBCXCall call)
+            {
+                Debug.Print("Added new call with UUID " + call.Uuid + " caller " + call.Participants.Caller.UserId + " callee " + call.Participants.Callees.Aggregate(string.Empty, (s, p) => s + p.UserId) + " to registry");
+                
+                var observer = new CallObserver();
+                _callObservers.Add(call.Uuid, observer);
+                call.AddObserver(observer, DispatchQueue.MainQueue);
+            }
+
+            public override void DidRemoveCall(IBCXCallRegistry registry, IBCXCall call)
+            {
+                Debug.Print("Removed call with UUID" + call.Uuid + " from registry");
+
+                if (!_callObservers.ContainsKey(call.Uuid)) return;
+                
+                var observer = _callObservers[call.Uuid];
+                if (observer != null)
+                    call.RemoveObserver(observer);
+            }
+        }
+
+        #endregion
+
+        #region Call Observer
+
+        private class CallObserver : BCXCallObserver
+        {
+            public override void CallDidChangeState(IBCXCall call, BCXCallState state)
+            {
+                Debug.Print("Call with UUID " + call.Uuid + " changed state " + state);
+            }
+
+            public override void CallDidConnect(IBCXCall call)
+            {
+                Debug.Print("Call " + call + " connected");
+            }
+
+            public override void CallDidEnd(IBCXCall call)
+            {
+                Debug.Print("Call " + call + " ended");
+            }
+
+            public override void CallDidFailWithError(IBCXCall call, NSError error)
+            {
+                Debug.Print("Call " + call + " failed with error " + error);
+            }
+
+            public override void CallDidUpdateOptions(IBCXCall call, BCXCallOptions options)
+            {
+                Debug.Print("Call " + call + " updated its options " + options);
+            }
+
+            public override void CallDidUpdateParticipants(IBCXCall call, IBCXCallParticipants participants)
+            {
+                Debug.Print("Call " + call + " updated its participants " + participants);
+            }
+
+            public override void CallDidUpgradeToVideoCall(IBCXCall call)
+            {
+                Debug.Print("Call " + call + " upgraded to video call");
+            }
+        }
+
+        #endregion
+        
+        #region Notifications Handlers
+        
+        public void DidTouchChatNotification(BDKChatNotification notification)
+        {
+            Debug.Print("DidTouchChatNotification");
+            var intent = BCHOpenChatIntent.OpenChatFrom(notification);
+            StartChatController(intent, new List<BandyerSdkForms.ChatWithCallCapability>() { BandyerSdkForms.ChatWithCallCapability.AudioVideo });
+        }
+
+        public void DidTouchFileShareNotification(BDKFileShareNotification notification)
+        {
+            Debug.Print("DidTouchFileShareNotification");
+            CallWindow.PresentCallViewControllerWithCompletion(new BDKOpenDownloadsIntent(), (error) => { });
+        }
+        
         #endregion
     }
 }

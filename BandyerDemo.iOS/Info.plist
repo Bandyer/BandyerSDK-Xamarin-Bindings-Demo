@@ -35,11 +35,11 @@
 	<key>XSAppIconAssets</key>
 	<string>Assets.xcassets/AppIcon.appiconset</string>
 	<key>NSCameraUsageDescription</key>
-	<string>this app needs camera</string>
+	<string>this app needs camera access</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>this app needs microphone</string>
+	<string>this app needs microphone access</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>this app needs photo library</string>
+	<string>this app needs photo library access</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

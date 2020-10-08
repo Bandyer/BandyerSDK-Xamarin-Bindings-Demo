@@ -30,7 +30,7 @@ namespace BandyerDemo.iOS
         }
 
         [Export("application:continueUserActivity:restorationHandler:")]
-        public bool ContinueUserActivity(UIApplication application, NSUserActivity userActivity, UIApplicationRestorationHandler completionHandler)
+        public override bool ContinueUserActivity(UIApplication application, NSUserActivity userActivity, UIApplicationRestorationHandler completionHandler)
         {
             return BandyerSdkiOS.ContinueUserActivity(userActivity);
         }
